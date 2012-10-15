@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using FluentNHibernate.Automapping;
 using FluentNHibernate.Automapping.Alterations;
 using FluentNHibernate.MappingModel.ClassBased;
@@ -107,6 +108,31 @@ namespace FluentNHibernate.Specs.Automapping
         static ClassMapping bParentMapping;
     }
 
+    public class when_overriding_key_column_name_in_base_class
+    {
+        Establish context = () =>
+        {
+            model = AutoMap.Source(new StubTypeSource(typeof(Request), typeof(ComercialRequest)));
+            model.Override(typeof(RequestMap));
+        };
+
+        Because of = () =>
+        {
+            baseClassMapping = model.BuildMappingFor<Request>();
+            joinedSubclassMapping = model.BuildMappingFor<ComercialRequest>();
+        };
+
+        It should_apply_override_to_joined_subclass = () =>
+        {
+            var idMapping = joinedSubclassMapping.Properties.Single(pm => pm.Member.Name == "Number");
+            idMapping.Columns.Single().Name.ShouldEqual("RequestNumber");
+        };
+
+        static AutoPersistenceModel model;
+        static ClassMapping baseClassMapping;
+        static ClassMapping joinedSubclassMapping;
+    }
+
     public class MultipleOverrides: IAutoMappingOverride<Entity>, IAutoMappingOverride<Parent>, IAutoMappingOverride<B_Parent>
     {
         public void Override(AutoMapping<Entity> mapping)
@@ -122,6 +148,36 @@ namespace FluentNHibernate.Specs.Automapping
         public void Override(AutoMapping<B_Parent> mapping)
         {
             mapping.BatchSize(50);
+        }
+    }
+
+    public class Request
+    {
+        public int Id { get; set; }
+        public DateTime Date { get; set; }
+        public string ChildType { get; set; }
+        public string Type { get; set; }
+    }
+
+    public class ComercialRequest: Request
+    {
+        public DateTime Time { get; set; }
+    }
+
+
+    public class RequestMap : IAutoMappingOverride<Request>
+    {
+        public void Override(AutoMapping<Request> mapping)
+        {
+            mapping.Polymorphism.Explicit();
+
+            mapping.Table("Request");
+            mapping.Id(c => c.Id, "RequestNumber").GeneratedBy.Assigned();
+            mapping.Map(c => c.Date, "ActualDate");
+            mapping.Map(c => c.ChildType, "Child");
+            mapping.Map(c => c.Type, "RequestType");
+
+            mapping.JoinedSubClass<ComercialRequest>("RequestNumber");
         }
     }
 }
