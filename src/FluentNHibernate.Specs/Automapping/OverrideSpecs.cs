@@ -112,8 +112,9 @@ namespace FluentNHibernate.Specs.Automapping
     {
         Establish context = () =>
         {
-            model = AutoMap.Source(new StubTypeSource(typeof(Request), typeof(ComercialRequest)));
+            model = AutoMap.Source(new StubTypeSource(typeof(Request), typeof(ComercialRequest))); 
             model.Override(typeof(RequestMap));
+            model.Override(typeof(CommercialRequestMap));
         };
 
         Because of = () =>
@@ -125,7 +126,7 @@ namespace FluentNHibernate.Specs.Automapping
         It should_apply_override_to_joined_subclass = () =>
         {
             var idMapping = joinedSubclassMapping.Properties.Single(pm => pm.Member.Name == "Number");
-            idMapping.Columns.Single().Name.ShouldEqual("RequestNumber");
+            idMapping.Columns.Single().Name.ShouldEqual("RequestNumber"); 
         };
 
         static AutoPersistenceModel model;
@@ -164,7 +165,6 @@ namespace FluentNHibernate.Specs.Automapping
         public DateTime Time { get; set; }
     }
 
-
     public class RequestMap : IAutoMappingOverride<Request>
     {
         public void Override(AutoMapping<Request> mapping)
@@ -178,6 +178,14 @@ namespace FluentNHibernate.Specs.Automapping
             mapping.Map(c => c.Type, "RequestType");
 
             mapping.JoinedSubClass<ComercialRequest>("RequestNumber");
+        }
+    }
+
+    class CommercialRequestMap: IAutoMappingOverride<ComercialRequest>
+    {
+        public void Override(AutoMapping<ComercialRequest> mapping)
+        {
+            mapping.Map(c => c.Time, "ActualTime");
         }
     }
 }
