@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AnalyseParams>
+  <TargetExecutable>C:\Program Files (x86)\NUnit 2.6.3\bin\nunit-console-x86.exe</TargetExecutable>
+  <TargetArguments>C:\work\projects\fluentNhibernate\src\FluentNHibernate.Testing\bin\Debug\FluentNHibernate.Testing.dll</TargetArguments>
+  <Output>C:\work\projects\fluentNhibernate\AppCoverageReport.xml</Output>
+  <ReportType>xml</ReportType>
+</AnalyseParams>

@@ -1,0 +1,5 @@
+<ReportParams>
+  <Source>C:\work\projects\fluentNhibernate\CoverageSnapshot.dcvr</Source>
+  <Output>C:\work\projects\fluentNhibernate\report.xml</Output>
+  <ReportType>XML</ReportType>
+</ReportParams>
