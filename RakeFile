@@ -2,14 +2,18 @@ require 'fileutils'
 require 'rexml/document'
 require 'json'
 require 'albacore'
+require 'open-uri'
+require 'openssl'
 
 PROPS = 'src/CommonAssemblyInfo.cs'
 SLN = 'src/FluentNHibernate.sln'
 CONFIG = 'config.json'
 NUSPEC = 'src/FluentNHibernate.nuspec'
+GITHUB_CONFIG_URL = 'https://raw.githubusercontent.com/jagregory/fluent-nhibernate/net35-dev/config.json'
+#disable certificate verification
+OpenSSL::SSL::VERIFY_PEER = OpenSSL::SSL::VERIFY_NONE
 
 module Platform
-
   def self.is_nix
     !RUBY_PLATFORM.match("linux|darwin").nil?
   end
@@ -18,7 +22,7 @@ module Platform
     command = cmd
     if self.is_nix
       runtime = CLR_TOOLS_VERSION
-      command = "mono --runtime=#{runtime} #{cmd}"
+      command = "mono #{cmd}"
     end
     command
   end
@@ -28,17 +32,18 @@ module Platform
     sw + arg
   end
 
-  def self.config
-    JSON.parse(File.read(CONFIG))
-  end
+  @config_content
 
+  def self.config
+    @config_content ||= begin
+      puts "Fetching config for the first time..."
+      @config_content = JSON.parse(ENV['TEAMCITY_VERSION']? open(GITHUB_CONFIG_URL).read: File.read(CONFIG))        
+      @config_content
+    end
+  end
 end 
 
 NH_VERSION = Platform.config['build']['nh_precompiler_switch']
-
-# Albacore.configure do |config|
-  # config.log_level = :verbose
-# end
 
 def get_version
   ENV['BUILD_NUMBER'] || Platform.config['default_version_number']
@@ -50,8 +55,6 @@ namespace :ci do
   task :run_ci_build => [ 'ripple:restore', 'build:all', 'docs:build', 'package:all' ]
 end
 
-
-
 namespace :ripple do
   desc 'Restores NuGet package binaries'
   task :restore do |cmd|
@@ -59,14 +62,13 @@ namespace :ripple do
     args = "restore"
     sh "#{ripple} #{args}"
   end
-  task :run_ci_build => ['ripple:restore', 'build:all', 'docs:build', 'package:all' ]
 end
 
 namespace :source do
   desc 'Update assembly info with latest version number'
   assemblyinfo :update_version do |info|
     info.output_file = PROPS
-	commit_hash = `git log -1 --format="%H%"`
+    commit_hash = `git log -1 --format="%H%"`
     
     info.title = Platform.config['assembly_info']['title']
     info.version = get_version
@@ -92,23 +94,23 @@ namespace :source do
     xb.targets = [:Clean, :Build]
     xb.verbosity = :minimal
     xb.properties = {
-      :Configuration => "Release", 
-      :DefineConstants => 'NH' + NH_VERSION.gsub('.', ''),
-      :TargetFrameworkVersion => Platform.config['build']['target_framework']
+		:Configuration => "Release", 
+		:DefineConstants => 'NH' + NH_VERSION.gsub('.', ''),
+		:WarningLevel => 0,
+		:TargetFrameworkVersion => Platform.config['build']['target_framework']
     }
   end
 
   msbuild :msbuild, [:nhibernate_version] do |msbuild, args|   
-	puts "Build switch #{args}"
-    msbuild.properties = {
-		Configuration: :Release,
-		DefineConstants: 'NH' + NH_VERSION.gsub('.', ''),
-		WarningLevel: 0
-    }
-    msbuild.targets [:Clean, :Build]
     msbuild.solution = SLN
+    msbuild.targets = [:Clean, :Build]
     msbuild.verbosity = :minimal
-    msbuild.parameters = ["/p:TargetFrameworkVersion=#{Platform.config['build']['target_framework']}"]
+    msbuild.properties = {
+  		:Configuration => :Release,
+  		:DefineConstants => 'NH' + NH_VERSION.gsub('.', ''),
+  		:WarningLevel => 0,
+		:TargetFrameworkVersion => Platform.config['build']['target_framework']
+    }
   end
 end
 
@@ -225,7 +227,7 @@ namespace :package do
           xml.root.elements["metadata/owners"].text = "jagregory, chester89"
           xml.root.elements["metadata/language"].text = "en-US"
           xml.root.elements["metadata/description"].text = "Fluent, XML-less, compile safe, automated, convention-based mappings for NHibernate."
-          xml.root.elements["metadata/licenseUrl"].text = "http://github.com/jagregory/fluent-nhibernate/raw/master/LICENSE.txt"
+          xml.root.elements["metadata/licenseUrl"].text = "http://github.com/jagregory/fluent-nhibernate/raw/net35/LICENSE.txt"
           xml.root.elements["metadata/projectUrl"].text = "http://fluentnhibernate.org"
           xml.root.elements["metadata/tags"].text = "orm dal nhibernate conventions"
 
@@ -234,28 +236,28 @@ namespace :package do
   end
   
  task :upgradeNhVersion, :version do |cmd, args|
-	  fail "Please provide version number to work with" if not args.has_key?(:version) 
-      puts "Updating NH version to #{args[:version]}"
-	  puts "Editing packages.config files..."
-	  packages_configs = Rake::FileList['**/packages.config']
-	  packages_configs.each do |pc|
-		  update_xml pc do |xml|
+	fail "Please provide version number to work with" if not args.has_key?(:version) 
+	puts "Updating NH version to #{args[:version]}"
+	puts "Editing packages.config files..."
+	packages_configs = Rake::FileList['**/packages.config']
+	packages_configs.each do |pc|
+		update_xml pc do |xml|
 			xml.root.elements["package[@id='NHibernate']"].attributes['version'] = args[:version]	  
-		  end  
-		  puts "Upgraded #{pc}"
-	  end
-	  
-	  puts "Editing .csproj files..."
-	  project_files = Rake::FileList['**/*.csproj']
-	  project_files.each do |pf|
-	      update_xml pf do |xml|
-		    old_value = xml.root.elements["ItemGroup[1]/Reference[contains(@Include, 'NHibernate')]/HintPath"].text
-			new_value = old_value.gsub(/(\d+).(\d+).(\d+).(\d+)/, args[:version])
-			xml.root.elements["ItemGroup[1]/Reference[contains(@Include, 'NHibernate')]/HintPath"].text = new_value
-		  end  
-		  puts "Upgraded #{pf}"
-	  end
-	  puts "Done."
+		end  
+		puts "Upgraded #{pc}"
+	end
+
+	puts "Editing .csproj files..."
+	project_files = Rake::FileList['**/*.csproj']
+	project_files.each do |pf|
+	update_xml pf do |xml|
+		old_value = xml.root.elements["ItemGroup[1]/Reference[contains(@Include, 'NHibernate')]/HintPath"].text
+		new_value = old_value.gsub(/(\d+).(\d+).(\d+).(\d+)/, args[:version])
+		xml.root.elements["ItemGroup[1]/Reference[contains(@Include, 'NHibernate')]/HintPath"].text = new_value
+	  end  
+	  puts "Upgraded #{pf}"
+	end
+	puts "Done."
   end
   
   nugetpack :nupack do |nu|
@@ -292,7 +294,7 @@ def update_xml(xml_path)
     #Open up the xml file
     xml_file = File.new(xml_path)
     xml = REXML::Document.new xml_file
-	xml.context[:attribute_quote] = :quote
+	  xml.context[:attribute_quote] = :quote
  
     #Allow caller to make the changes
     yield xml
@@ -307,7 +309,7 @@ def update_xml(xml_path)
 end
 
 task :sln do
-  Thread.new do
-    system "devenv #{SLN}"
-  end
+	Thread.new do
+	system "devenv #{SLN}"
+	end
 end
