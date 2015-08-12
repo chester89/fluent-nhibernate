@@ -368,6 +368,20 @@ namespace FluentNHibernate.Testing.DomainModel.Mapping
         }
 
         [Test]
+        public void CanSetAsBothUniqueAndSpecifyLength()
+        {
+            new MappingTester<MappedObject>()
+                .ForMapping(m =>
+                {
+                    m.Id(x => x.Id);
+                    m.Map(x => x.Name).Length(100).Unique();
+                })
+                .Element("class/property/column")
+                .HasAttribute("unique", "true")
+                .HasAttribute("length", "100");
+        }
+
+        [Test]
         public void CanSetAsNotUnique()
         {
             new MappingTester<MappedObject>()
